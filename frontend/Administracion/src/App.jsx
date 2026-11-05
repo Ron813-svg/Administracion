@@ -1,122 +1,123 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useCallback, useEffect, useState } from 'react'
+import { api } from './api.js'
+import Teachers from './components/Teachers.jsx'
+import Subjects from './components/Subjects.jsx'
 
-function App() {
-  const [count, setCount] = useState(0)
-
-  return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+async function fetchAll() {
+  const [teachers, subjects] = await Promise.all([api.teachers.list(), api.subjects.list()])
+  return { teachers, subjects }
 }
 
-export default App
+export default function App() {
+  const [tab, setTab] = useState('teachers')
+  const [teachers, setTeachers] = useState([])
+  const [subjects, setSubjects] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [notice, setNotice] = useState(null)
+
+  // Recarga ambas listas (se usa tras cada cambio y en "Reintentar")
+  const load = useCallback(async () => {
+    try {
+      const data = await fetchAll()
+      setTeachers(data.teachers)
+      setSubjects(data.subjects)
+      setLoadError('')
+    } catch (e) {
+      setLoadError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  // Carga inicial
+  useEffect(() => {
+    let ignore = false
+    fetchAll()
+      .then((data) => {
+        if (ignore) return
+        setTeachers(data.teachers)
+        setSubjects(data.subjects)
+      })
+      .catch((e) => {
+        if (!ignore) setLoadError(e.message)
+      })
+      .finally(() => {
+        if (!ignore) setLoading(false)
+      })
+    return () => {
+      ignore = true
+    }
+  }, [])
+
+  // Los avisos de éxito se cierran solos
+  useEffect(() => {
+    if (notice?.type !== 'ok') return
+    const id = setTimeout(() => setNotice(null), 4000)
+    return () => clearTimeout(id)
+  }, [notice])
+
+  // Docentes y asignaturas dependen entre sí: tras cada cambio se recargan ambos
+  const onChange = async (message) => {
+    await load()
+    setNotice({ type: 'ok', text: message })
+  }
+
+  return (
+    <div className="shell">
+      <h1>Administración escolar</h1>
+
+      <div className="tabs" role="tablist" aria-label="Secciones">
+        <button
+          type="button"
+          role="tab"
+          className="tab"
+          aria-selected={tab === 'teachers'}
+          onClick={() => setTab('teachers')}
+        >
+          Docentes <span className="count">{teachers.length}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className="tab"
+          aria-selected={tab === 'subjects'}
+          onClick={() => setTab('subjects')}
+        >
+          Asignaturas <span className="count">{subjects.length}</span>
+        </button>
+      </div>
+
+      {notice && (
+        <div
+          className={`notice ${notice.type}`}
+          role={notice.type === 'error' ? 'alert' : 'status'}
+        >
+          <span>{notice.text}</span>
+          <button type="button" aria-label="Cerrar aviso" onClick={() => setNotice(null)}>
+            ×
+          </button>
+        </div>
+      )}
+
+      <main role="tabpanel">
+        {loading ? (
+          <p className="empty">Cargando…</p>
+        ) : loadError ? (
+          <div className="empty">
+            <p>{loadError}</p>
+            <p>
+              <button type="button" className="btn" onClick={load}>
+                Reintentar
+              </button>
+            </p>
+          </div>
+        ) : tab === 'teachers' ? (
+          <Teachers teachers={teachers} subjects={subjects} onChange={onChange} />
+        ) : (
+          <Subjects teachers={teachers} subjects={subjects} onChange={onChange} />
+        )}
+      </main>
+    </div>
+  )
+}
